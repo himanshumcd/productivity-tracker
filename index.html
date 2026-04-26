@@ -1,0 +1,154 @@
+import React, { useState, useRef, useEffect } from 'react';
+import API from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { Send, Bot, User, Zap } from 'lucide-react';
+
+function Message({ msg }) {
+  const isBot = msg.role === 'bot';
+  return (
+    <div className={`flex gap-3 ${isBot ? '' : 'flex-row-reverse'}`}>
+      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${
+        isBot ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-slate-700'
+      }`}>
+        {isBot ? <Bot size={16} className="text-white" /> : <User size={16} className="text-slate-300" />}
+      </div>
+      <div className={`max-w-[80%] ${isBot ? '' : 'items-end'} flex flex-col gap-1`}>
+        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-line ${
+          isBot
+            ? 'bg-slate-800 text-slate-200 rounded-tl-sm border border-white/10'
+            : 'bg-indigo-600 text-white rounded-tr-sm'
+        }`}>
+          {msg.text}
+        </div>
+        <p className="text-slate-600 text-xs px-1">{msg.time}</p>
+      </div>
+    </div>
+  );
+}
+
+const INITIAL_MESSAGE = {
+  role: 'bot',
+  text: "👋 Hey! I'm your AI Productivity Coach.\n\nI can help you with:\n• Sleep optimization tips\n• Study techniques\n• Exercise advice\n• Reducing screen time\n• Stress management\n\nWhat would you like to improve today?",
+  time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+};
+
+export default function ChatbotPage() {
+  const { user } = useAuth();
+  const [messages, setMessages] = useState([INITIAL_MESSAGE]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([
+    'Sleep tips', 'Study techniques', 'My productivity score', 'Exercise advice'
+  ]);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text) => {
+    const msg = text || input.trim();
+    if (!msg) return;
+
+    const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    setMessages(prev => [...prev, { role: 'user', text: msg, time: now }]);
+    setInput('');
+    setLoading(true);
+    setQuickReplies([]);
+
+    try {
+      const { data } = await API.post('/chatbot/message', { message: msg });
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: data.reply,
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      }]);
+      if (data.quickReplies?.length) setQuickReplies(data.quickReplies);
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'bot',
+        text: "Sorry, I couldn't connect right now. Try again in a moment! 🔄",
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto h-[calc(100vh-8rem)] flex flex-col">
+      {/* Header */}
+      <div className="bg-slate-900 border border-white/10 rounded-t-2xl px-5 py-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <Zap size={20} className="text-white" />
+        </div>
+        <div>
+          <p className="text-white font-semibold">AI Productivity Coach</p>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <p className="text-emerald-400 text-xs">Online</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto bg-slate-950 px-4 py-5 space-y-4 border-x border-white/10">
+        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+
+        {/* Typing indicator */}
+        {loading && (
+          <div className="flex gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <Bot size={16} className="text-white" />
+            </div>
+            <div className="bg-slate-800 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1.5 items-center">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full bg-slate-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Quick replies */}
+      {quickReplies.length > 0 && (
+        <div className="bg-slate-950 border-x border-white/10 px-4 py-2 flex gap-2 flex-wrap">
+          {quickReplies.map((q, i) => (
+            <button key={i} onClick={() => sendMessage(q)}
+              className="px-3 py-1.5 bg-slate-800 text-indigo-300 text-xs rounded-full border border-indigo-500/30 hover:bg-indigo-600/20 hover:border-indigo-500 transition-all">
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="bg-slate-900 border border-white/10 rounded-b-2xl px-4 py-3">
+        <div className="flex gap-3 items-end">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Ask me anything about productivity..."
+            rows={1}
+            className="flex-1 bg-slate-800 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none border border-white/10 max-h-28"
+            style={{ minHeight: '44px' }}
+          />
+          <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
+            className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 shadow-lg shadow-indigo-600/30">
+            <Send size={18} className="text-white" />
+          </button>
+        </div>
+        <p className="text-slate-600 text-xs mt-2 text-center">Press Enter to send • Shift+Enter for new line</p>
+      </div>
+    </div>
+  );
+}

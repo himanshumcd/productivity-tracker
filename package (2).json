@@ -1,0 +1,275 @@
+import React, { useEffect, useState } from 'react';
+import API from '../utils/api';
+import toast from 'react-hot-toast';
+import { format } from 'date-fns';
+import { Plus, Trash2, Edit2, Save, X, BookOpen, Moon, Dumbbell, Monitor } from 'lucide-react';
+
+const moods = ['terrible','bad','okay','good','excellent'];
+const moodEmoji = { terrible: '😩', bad: '😞', okay: '😐', good: '😊', excellent: '🤩' };
+
+function SliderField({ icon: Icon, label, value, min, max, step, unit, onChange, color, tip }) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
+          <Icon size={15} className={color} /> {label}
+        </label>
+        <span className={`text-sm font-bold ${color}`}>{value} {unit}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ '--pct': `${pct}%` }}
+        className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-700"
+      />
+      {tip && <p className="text-slate-500 text-xs">{tip}</p>}
+    </div>
+  );
+}
+
+function ActivityCard({ activity, onDelete }) {
+  const label = activity.productivityLabel;
+  const score = activity.productivityScore;
+
+  return (
+    <div className="bg-slate-900 border border-white/10 rounded-xl p-4 hover:border-indigo-500/30 transition-all">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-white font-medium">{format(new Date(activity.date), 'EEE, MMM d yyyy')}</p>
+          <div className="flex items-center gap-2 mt-1">
+            {score !== null && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                label === 'High'   ? 'bg-emerald-500/20 text-emerald-400' :
+                label === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+                                     'bg-red-500/20 text-red-400'
+              }`}>{score}/100 · {label}</span>
+            )}
+            <span className="text-lg">{moodEmoji[activity.mood] || '😐'}</span>
+          </div>
+        </div>
+        <button onClick={() => onDelete(activity._id)} className="text-slate-500 hover:text-red-400 transition-colors p-1">
+          <Trash2 size={15} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+        <div className="flex items-center gap-2 text-slate-400">
+          <BookOpen size={13} className="text-indigo-400" />
+          Study: <span className="text-white font-medium">{activity.studyHours}h</span>
+        </div>
+        <div className="flex items-center gap-2 text-slate-400">
+          <Moon size={13} className="text-purple-400" />
+          Sleep: <span className="text-white font-medium">{activity.sleepHours}h</span>
+        </div>
+        <div className="flex items-center gap-2 text-slate-400">
+          <Dumbbell size={13} className="text-emerald-400" />
+          Exercise: <span className="text-white font-medium">{activity.exerciseMinutes}m</span>
+        </div>
+        <div className="flex items-center gap-2 text-slate-400">
+          <Monitor size={13} className="text-amber-400" />
+          Screen: <span className="text-white font-medium">{activity.screenTimeHours}h</span>
+        </div>
+      </div>
+
+      {activity.notes && (
+        <p className="text-slate-500 text-xs mt-2 italic">"{activity.notes}"</p>
+      )}
+    </div>
+  );
+}
+
+const defaultForm = {
+  date: new Date().toISOString().split('T')[0],
+  studyHours: 4, sleepHours: 7, exerciseMinutes: 30, screenTimeHours: 4,
+  mood: 'okay', notes: ''
+};
+
+export default function ActivitiesPage() {
+  const [activities, setActivities] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(defaultForm);
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [prediction, setPrediction] = useState(null);
+
+  const fetchActivities = async () => {
+    setFetching(true);
+    try {
+      const { data } = await API.get('/activities?period=60&limit=50');
+      setActivities(data.activities);
+    } catch { toast.error('Failed to load activities'); }
+    finally { setFetching(false); }
+  };
+
+  useEffect(() => { fetchActivities(); }, []);
+
+  // Live prediction preview while filling form
+  const getLivePrediction = async () => {
+    try {
+      const { data } = await API.post('/predictions/analyze', {
+        studyHours: form.studyHours, sleepHours: form.sleepHours,
+        exerciseMinutes: form.exerciseMinutes, screenTimeHours: form.screenTimeHours
+      });
+      setPrediction(data.prediction);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (showForm) {
+      const t = setTimeout(getLivePrediction, 400);
+      return () => clearTimeout(t);
+    }
+  }, [form.studyHours, form.sleepHours, form.exerciseMinutes, form.screenTimeHours, showForm]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await API.post('/activities', form);
+      toast.success('Activity logged! 🎉');
+      setForm(defaultForm);
+      setShowForm(false);
+      setPrediction(null);
+      fetchActivities();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save');
+    } finally { setLoading(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this activity?')) return;
+    try {
+      await API.delete(`/activities/${id}`);
+      toast.success('Deleted');
+      setActivities(prev => prev.filter(a => a._id !== id));
+    } catch { toast.error('Failed to delete'); }
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Activity Log</h1>
+          <p className="text-slate-400 text-sm mt-0.5">Track your daily habits for AI-powered insights</p>
+        </div>
+        <button onClick={() => { setShowForm(!showForm); setPrediction(null); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+            showForm ? 'bg-slate-700 text-slate-300' : 'bg-indigo-600 text-white hover:bg-indigo-500'
+          }`}>
+          {showForm ? <><X size={16}/> Cancel</> : <><Plus size={16}/> Log Activity</>}
+        </button>
+      </div>
+
+      {/* Log Form */}
+      {showForm && (
+        <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-6 shadow-xl">
+          <h2 className="text-white font-semibold mb-5">📝 Log Today's Activity</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-5">
+                {/* Date */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Date</label>
+                  <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white focus:outline-none focus:border-indigo-500 transition-all" />
+                </div>
+
+                <SliderField icon={BookOpen}  label="Study Hours"       value={form.studyHours}       min={0} max={16} step={0.5} unit="hrs" color="text-indigo-400"  onChange={v => setForm({...form,studyHours:v})}       tip="Recommended: 4-8 hrs/day" />
+                <SliderField icon={Moon}      label="Sleep Hours"       value={form.sleepHours}       min={0} max={12} step={0.5} unit="hrs" color="text-purple-400"  onChange={v => setForm({...form,sleepHours:v})}       tip="Optimal: 7-9 hrs/night" />
+                <SliderField icon={Dumbbell}  label="Exercise (min)"    value={form.exerciseMinutes}  min={0} max={180} step={5}  unit="min" color="text-emerald-400" onChange={v => setForm({...form,exerciseMinutes:v})}  tip="Target: 30+ mins/day" />
+                <SliderField icon={Monitor}   label="Screen Time (hrs)" value={form.screenTimeHours}  min={0} max={16} step={0.5} unit="hrs" color="text-amber-400"   onChange={v => setForm({...form,screenTimeHours:v})} tip="Aim for under 4 hrs/day" />
+              </div>
+
+              <div className="space-y-5">
+                {/* Mood */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Mood</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {moods.map(m => (
+                      <button key={m} type="button" onClick={() => setForm({...form, mood: m})}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border transition-all capitalize ${
+                          form.mood === m ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300' : 'border-white/10 text-slate-400 hover:border-slate-600'
+                        }`}>
+                        {moodEmoji[m]} {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Notes (optional)</label>
+                  <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
+                    placeholder="How was your day? Any distractions?" rows={3}
+                    className="w-full px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all resize-none text-sm" />
+                </div>
+
+                {/* Live prediction preview */}
+                {prediction && (
+                  <div className="bg-slate-800 rounded-xl p-4 border border-white/10">
+                    <p className="text-slate-400 text-xs mb-2 font-medium">🤖 AI PREDICTION PREVIEW</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-bold text-xl">{prediction.productivity_score}<span className="text-slate-400 text-sm">/100</span></p>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          prediction.productivity_label === 'High'   ? 'bg-emerald-500/20 text-emerald-400' :
+                          prediction.productivity_label === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+                                                                        'bg-red-500/20 text-red-400'
+                        }`}>{prediction.productivity_label} Productivity</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-slate-400 text-xs">Pattern</p>
+                        <p className="text-indigo-300 text-sm font-medium">{prediction.cluster_description}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                  {loading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> Saving...</> : <><Save size={16}/> Save Activity</>}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Activity list */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-white font-semibold">Recent Logs ({activities.length})</p>
+        </div>
+        {fetching ? (
+          <div className="flex justify-center py-12"><div className="w-6 h-6 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+        ) : activities.length === 0 ? (
+          <div className="text-center py-16 bg-slate-900 rounded-2xl border border-white/10">
+            <p className="text-4xl mb-3">📋</p>
+            <p className="text-white font-medium">No activities logged yet</p>
+            <p className="text-slate-400 text-sm mt-1">Click "Log Activity" to get started</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activities.map(a => <ActivityCard key={a._id} activity={a} onDelete={handleDelete} />)}
+          </div>
+        )}
+      </div>
+
+      {/* Global slider style */}
+      <style>{`
+        input[type='range']::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none;
+          width: 18px; height: 18px; border-radius: 50%;
+          background: #6366f1; cursor: pointer; border: 2px solid #1e1b4b;
+          box-shadow: 0 0 6px rgba(99,102,241,0.5);
+        }
+        input[type='range']::-webkit-slider-runnable-track {
+          background: linear-gradient(to right, #6366f1 var(--pct,0%), #334155 var(--pct,0%));
+          border-radius: 8px; height: 6px;
+        }
+      `}</style>
+    </div>
+  );
+}

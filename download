@@ -1,0 +1,29 @@
+const express = require('express');
+const router = express.Router();
+const { body } = require('express-validator');
+const {
+  addActivity, getActivities, getActivity,
+  updateActivity, deleteActivity, getDashboardStats
+} = require('../controllers/activitiesController');
+const { protect } = require('../middleware/auth');
+
+const activityValidation = [
+  body('studyHours').isFloat({ min: 0, max: 24 }).withMessage('Study hours must be 0-24'),
+  body('sleepHours').isFloat({ min: 0, max: 24 }).withMessage('Sleep hours must be 0-24'),
+  body('exerciseMinutes').isFloat({ min: 0, max: 480 }).withMessage('Exercise minutes must be 0-480'),
+  body('screenTimeHours').isFloat({ min: 0, max: 24 }).withMessage('Screen time must be 0-24')
+];
+
+router.use(protect); // All activity routes need auth
+
+router.get('/stats', getDashboardStats);
+router.route('/')
+  .get(getActivities)
+  .post(activityValidation, addActivity);
+
+router.route('/:id')
+  .get(getActivity)
+  .put(updateActivity)
+  .delete(deleteActivity);
+
+module.exports = router;

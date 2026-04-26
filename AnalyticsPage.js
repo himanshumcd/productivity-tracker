@@ -1,0 +1,26 @@
+{
+  "name": "productivity-tracker-backend",
+  "version": "1.0.0",
+  "description": "AI/ML Personal Activities Tracker - Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.3.1",
+    "node-cron": "^3.0.2",
+    "nodemailer": "^6.9.3",
+    "pdfkit": "^0.13.0",
+    "axios": "^1.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

@@ -1,0 +1,255 @@
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import API from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
+} from 'recharts';
+import { format } from 'date-fns';
+import {
+  BookOpen, Moon, Dumbbell, Monitor, TrendingUp,
+  TrendingDown, Minus, Plus, Download, RefreshCw, Zap
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const COLORS = ['#ef4444', '#f59e0b', '#10b981'];
+
+function StatCard({ icon: Icon, label, value, unit, color, sublabel }) {
+  return (
+    <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 hover:border-indigo-500/30 transition-all">
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+          <Icon size={18} className="text-white" />
+        </div>
+      </div>
+      <p className="text-2xl font-bold text-white">{value}<span className="text-sm text-slate-400 font-normal ml-1">{unit}</span></p>
+      <p className="text-slate-400 text-sm mt-1">{label}</p>
+      {sublabel && <p className="text-slate-500 text-xs mt-0.5">{sublabel}</p>}
+    </div>
+  );
+}
+
+function ScoreRing({ score }) {
+  const color = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
+  const label = score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <svg width="140" height="140" className="-rotate-90">
+        <circle cx="70" cy="70" r={r} fill="none" stroke="#1e293b" strokeWidth="12" />
+        <circle cx="70" cy="70" r={r} fill="none" stroke={color} strokeWidth="12"
+          strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 1s ease' }} />
+      </svg>
+      <div className="text-center -mt-20 mb-14">
+        <p className="text-4xl font-bold text-white">{score}</p>
+        <p className="text-slate-400 text-sm">out of 100</p>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${
+          label === 'High' ? 'bg-emerald-500/20 text-emerald-400' :
+          label === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+          'bg-red-500/20 text-red-400'}`}>
+          {label} Productivity
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+  const [stats, setStats] = useState(null);
+  const [patterns, setPatterns] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [statsRes, patternsRes] = await Promise.all([
+        API.get('/activities/stats'),
+        API.get('/predictions/patterns')
+      ]);
+      setStats(statsRes.data.stats);
+      setPatterns(patternsRes.data.patterns);
+    } catch (err) {
+      toast.error('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const downloadReport = async () => {
+    try {
+      const res = await API.get('/reports/pdf', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'productivity_report.pdf';
+      a.click();
+      toast.success('Report downloaded!');
+    } catch {
+      toast.error('Failed to generate report');
+    }
+  };
+
+  const getTrendIcon = (trend) => {
+    if (trend === 'improving') return <TrendingUp size={16} className="text-emerald-400" />;
+    if (trend === 'declining') return <TrendingDown size={16} className="text-red-400" />;
+    return <Minus size={16} className="text-slate-400" />;
+  };
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">{greeting}, {user?.name?.split(' ')[0]}! 👋</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-400 rounded-xl hover:text-white text-sm transition-all border border-white/10">
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button onClick={downloadReport} className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 text-sm transition-all">
+            <Download size={14} /> Report PDF
+          </button>
+          <Link to="/activities" className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-500 text-sm transition-all">
+            <Plus size={14} /> Log Today
+          </Link>
+        </div>
+      </div>
+
+      {!stats ? (
+        /* Empty state */
+        <div className="bg-slate-900 border border-white/10 rounded-2xl p-12 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 flex items-center justify-center mx-auto mb-4">
+            <Zap size={28} className="text-indigo-400" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">No activity data yet</h2>
+          <p className="text-slate-400 mb-6">Start logging your daily activities to see your productivity insights here.</p>
+          <Link to="/activities" className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 font-medium transition-all">
+            <Plus size={16} /> Log Your First Activity
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard icon={BookOpen}  label="Avg Study"     value={stats.averages.studyHours}      unit="hrs/day" color="bg-indigo-600"  sublabel="Last 30 days" />
+            <StatCard icon={Moon}      label="Avg Sleep"     value={stats.averages.sleepHours}      unit="hrs/day" color="bg-purple-600"  sublabel="Optimal: 7-9 hrs" />
+            <StatCard icon={Dumbbell}  label="Avg Exercise"  value={stats.averages.exerciseMinutes} unit="min/day" color="bg-emerald-600" sublabel="Target: 30+ min" />
+            <StatCard icon={Monitor}   label="Avg Screen"    value={stats.averages.screenTimeHours} unit="hrs/day" color="bg-amber-600"   sublabel="Target: < 4 hrs" />
+          </div>
+
+          {/* Score + charts row */}
+          <div className="grid lg:grid-cols-3 gap-4">
+            {/* Score */}
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center">
+              <p className="text-white font-semibold mb-1">Avg Productivity Score</p>
+              <ScoreRing score={parseInt(stats.averages.productivityScore)} />
+              <div className="flex items-center gap-2 text-sm text-slate-400 mt-2">
+                {getTrendIcon(patterns?.trend)}
+                <span className="capitalize">{patterns?.trend || 'stable'} trend</span>
+              </div>
+              <p className="text-slate-500 text-xs mt-1">{stats.totalLogs} days logged</p>
+            </div>
+
+            {/* Weekly score line chart */}
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 lg:col-span-2">
+              <p className="text-white font-semibold mb-4">Productivity Score (Last 7 Days)</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={stats.weeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'MMM d')} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
+                    labelFormatter={d => format(new Date(d), 'MMM d, yyyy')}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <Line type="monotone" dataKey="productivityScore" stroke="#6366f1" strokeWidth={2.5} dot={{ fill: '#6366f1', r: 4 }} name="Score" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Activity bar chart + pie */}
+          <div className="grid lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 bg-slate-900 border border-white/10 rounded-2xl p-5">
+              <p className="text-white font-semibold mb-4">Weekly Activity Breakdown</p>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={stats.weeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'EEE')} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }} />
+                  <Bar dataKey="studyHours"       name="Study (h)"    fill="#6366f1" radius={[4,4,0,0]} />
+                  <Bar dataKey="sleepHours"       name="Sleep (h)"    fill="#8b5cf6" radius={[4,4,0,0]} />
+                  <Bar dataKey="exerciseMinutes"  name="Exercise (m)" fill="#10b981" radius={[4,4,0,0]} />
+                  <Bar dataKey="screenTimeHours"  name="Screen (h)"   fill="#f59e0b" radius={[4,4,0,0]} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Pie chart */}
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-5">
+              <p className="text-white font-semibold mb-4">Productivity Distribution</p>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={[
+                    { name: 'Low',    value: stats.labelDistribution.Low },
+                    { name: 'Medium', value: stats.labelDistribution.Medium },
+                    { name: 'High',   value: stats.labelDistribution.High },
+                  ]} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" paddingAngle={3}>
+                    {COLORS.map((color, i) => <Cell key={i} fill={color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Suggestions */}
+          {patterns?.suggestions?.length > 0 && (
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-6">
+              <p className="text-white font-semibold mb-4 flex items-center gap-2">
+                <Zap size={18} className="text-indigo-400" /> AI Suggestions
+              </p>
+              <div className="grid md:grid-cols-2 gap-3">
+                {patterns.suggestions.slice(0, 4).map((s, i) => (
+                  <div key={i} className={`flex items-start gap-3 p-3 rounded-xl border ${
+                    s.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                    s.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20' :
+                    s.type === 'danger'  ? 'bg-red-500/10 border-red-500/20' :
+                    'bg-indigo-500/10 border-indigo-500/20'
+                  }`}>
+                    <span className="text-xl leading-none mt-0.5">{s.icon}</span>
+                    <p className="text-slate-300 text-sm">{s.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
